@@ -1,0 +1,225 @@
+esphome:
+  name: growatt
+  friendly_name: Growatt
+
+esp8266:
+  board: esp07s
+
+# Enable logging
+logger:
+  baud_rate: 0 # serial logging off, just use wifi
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_key
+
+mqtt:
+  broker: warmplace
+  username: growatt
+  password: !secret mqtt_password
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Growatt Fallback Hotspot"
+    password: !secret wifi_password
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+output:
+    # Blue Led
+  - id: light_bl
+    platform: gpio
+    pin: 16
+    # Green Led
+  - id: light_gr
+    platform: gpio
+    pin: 0
+    # Red Led
+  - id: light_rd
+    platform: gpio
+    pin: 2
+
+uart:
+  id: uart_modbus
+  tx_pin: 1
+  rx_pin: 3
+  baud_rate: 115200
+
+modbus:
+  id: modbus1
+  uart_id: uart_modbus
+
+modbus_controller:
+  - id: growatt
+    address: 1
+    modbus_id: modbus1
+    update_interval: 5s
+
+text_sensor:
+  - platform: template
+    name: Status
+    lambda: |-
+      switch (int(id(enum_status).state)) {
+        case (0):
+          return {"Standby"};
+        case (1):
+          return {"Normal"};
+        case (3):
+          return {"Error"};
+        case (4):
+          return {"Flashing"};
+      }
+      return {"Offline"};
+
+sensor:
+  # Input registers, aka read-only
+  - platform: modbus_controller
+    id: enum_status
+    skip_updates: 6
+    register_type: read
+    address: 3000
+    value_type: U_WORD
+    bitmask: 0x0f
+
+  - platform: modbus_controller
+    name: Battery Charge
+    device_class: battery
+    unit_of_measurement: "%"
+    skip_updates: 6
+    register_type: read
+    address: 3171
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    name: PV Total Power
+    device_class: power
+    unit_of_measurement: W
+    accuracy_decimals: 1
+    register_type: read
+    address: 3001
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    name: Power from Grid
+    device_class: power
+    unit_of_measurement: W
+    register_type: read
+    address: 3041
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+  - platform: modbus_controller
+    name: Power to Grid
+    device_class: power
+    unit_of_measurement: W
+    register_type: read
+    address: 3043
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+
+#  - platform: template
+#    name: Grid Power
+#    device_class: power
+#    unit_of_measurement: W
+#    accuracy_decimals: 1
+#    update_interval: 5s
+#    lambda: |-
+#      if (id(power_from_grid).state > 0) {
+#        return id(power_from_grid).state;
+#      } else {
+#        return id(power_to_grid).state * -1;
+#      }
+
+  - platform: modbus_controller
+    name: Total Load Power
+    device_class: power
+    unit_of_measurement: W
+    accuracy_decimals: 1
+    register_type: read
+    address: 3045
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    name: Power from Battery
+    device_class: power
+    unit_of_measurement: W
+    register_type: read
+    address: 3178
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+  - platform: modbus_controller
+    name: Power to Battery
+    device_class: power
+    unit_of_measurement: W
+    register_type: read
+    address: 3180
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+
+#  - platform: template
+#    name: Battery Power
+#    device_class: power
+#    unit_of_measurement: W
+#    accuracy_decimals: 1
+#    update_interval: 5s
+#    lambda: |-
+#      if (id(power_from_battery).state > 0) {
+#        return id(power_from_battery).state;
+#      } else {
+#        return id(power_to_battery).state * -1;
+#      }
+
+  - platform: modbus_controller
+    name: Reactive Power
+    device_class: power
+    unit_of_measurement: VAr
+    skip_updates: 2
+    accuracy_decimals: 1
+    register_type: read
+    address: 3021
+    value_type: U_DWORD
+    filters:
+      - multiply: 0.1
+
+  - platform: modbus_controller
+    name: Grid Frequency
+    device_class: frequency
+    unit_of_measurement: Hz
+    skip_updates: 6
+    accuracy_decimals: 2
+    register_type: read
+    address: 3025
+    value_type: U_WORD
+    filters:
+      - multiply: 0.01
+
+number:
+  # holding registers, aka read-write
+  - platform: modbus_controller
+    name: Charge Rate
+    #register_type: holding
+    address: 3047
+    value_type: U_WORD
+    max_value: 100
+    unit_of_measurement: "%"
+    skip_updates: 5
