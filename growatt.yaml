@@ -14,11 +14,6 @@ api:
   encryption:
     key: !secret api_key
 
-mqtt:
-  broker: warmplace
-  username: growatt
-  password: !secret mqtt_password
-
 ota:
   - platform: esphome
     password: !secret ota_password
